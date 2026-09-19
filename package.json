@@ -1,0 +1,11 @@
+{
+  "name": "generator-app",
+  "version": "1.0.0",
+  "description": "Quote/Art generator instrumented for observability (ESD Assignment 1)",
+  "main": "app.js",
+  "scripts": { "start": "node app.js" },
+  "dependencies": {
+    "express": "^4.21.0",
+    "prom-client": "^15.1.3"
+  }
+}
