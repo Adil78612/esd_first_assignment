@@ -1,7 +1,11 @@
 const express = require('express');
 const client = require('prom-client');
 const crypto = require('crypto');
-
+const db = require('./db');
+const swaggerUi = require('swagger-ui-express');
+const YAML = require('yaml');
+const fs = require('fs');
+const openapiDoc = YAML.parse(fs.readFileSync('./openapi.yaml', 'utf8'));
 const app = express();
 app.use(express.json());
 const PORT = process.env.PORT || 3000;
@@ -127,7 +131,36 @@ async function doGenerate(type, requestId) {
   }
 }
 
+// ---------- Part A: simple in-memory rate limiter ----------
+// Limit: 5 requests per 10-second window, shared across all callers of this endpoint.
+const RATE_LIMIT = 5;
+const WINDOW_MS = 10_000;
+let windowStart = Date.now();
+let windowCount = 0;
+
+function rateLimit(req, res, next) {
+  const now = Date.now();
+  if (now - windowStart >= WINDOW_MS) {   // window expired -> reset
+    windowStart = now;
+    windowCount = 0;
+  }
+  if (windowCount >= RATE_LIMIT) {
+    const retryAfterSec = Math.ceil((windowStart + WINDOW_MS - now) / 1000);
+    res.set('Retry-After', String(retryAfterSec));   // tell the caller when to retry
+    return res.status(429).json({
+      error: { code: 'RATE_LIMITED', messages: [`limit is ${RATE_LIMIT} requests per ${WINDOW_MS / 1000}s`] },
+    });
+  }
+  windowCount++;
+  next();
+}
+
 // ---------- routes ----------
+
+// ---------- Part A: interactive API docs from the OpenAPI spec ----------
+app.use('/docs', swaggerUi.serve, swaggerUi.setup(openapiDoc));
+
+
 app.post('/api/generate', async (req, res) => {
   const type = req.query.type === 'art' ? 'art' : 'quote';
   try {
@@ -153,6 +186,53 @@ app.post('/api/favorite', (req, res) => {
   res.json({ ok: true });
 });
 
+// ---------- Part A: injectable save failure (for the Python caller demo) ----------
+let failSaves = false;
+function failCheck(req, res, next) {
+  if (failSaves) {
+    return res.status(503).json({ error: { code: 'SERVICE_UNAVAILABLE', messages: ['save temporarily failing (injected)'] } });
+  }
+  next();
+}
+
+
+// ---------- Part A: saved generations (SQLite-backed, shared source of truth) ----------
+
+// POST /api/generations  — save a generation.
+// Idempotent: same id twice = no duplicate. 201 if created, 200 if it already existed.
+app.post('/api/generations', failCheck, rateLimit, (req, res) => {
+  const { id, type, content } = req.body || {};
+
+  // validate input -> 400 with a consistent error format
+  const errors = [];
+  if (!id || typeof id !== 'string') errors.push('id is required (string)');
+  if (type !== 'quote' && type !== 'art') errors.push('type must be "quote" or "art"');
+  if (!content || typeof content !== 'string') errors.push('content is required (string)');
+  if (errors.length) {
+    return res.status(400).json({ error: { code: 'VALIDATION_ERROR', messages: errors } });
+  }
+
+  const { created } = db.saveGeneration({ id, type, content });
+  const saved = db.getGeneration(id);
+  // 201 Created on first save, 200 OK on a repeat (idempotent, not an error)
+  res.status(created ? 201 : 200).json({ created, generation: saved });
+});
+
+// GET /api/generations  — list all saved generations.
+app.get('/api/generations', (req, res) => {
+  res.json({ generations: db.listGenerations() });
+});
+
+// GET /api/generations/:id  — fetch one, or 404 if not found.
+app.get('/api/generations/:id', (req, res) => {
+  const found = db.getGeneration(req.params.id);
+  if (!found) {
+    return res.status(404).json({ error: { code: 'NOT_FOUND', messages: ['no generation with that id'] } });
+  }
+  res.json({ generation: found });
+});
+
+
 // Part E1: toggle the fault.  POST /admin/fault?on=true|false
 app.post('/admin/fault', (req, res) => {
   faultOn = req.query.on === 'true';
@@ -171,6 +251,12 @@ app.post('/admin/cardinality', (req, res) => {
 app.post('/admin/cardinality-nolabel', (req, res) => {
   demoNoLabel.inc();
   res.json({ ok: true });
+});
+
+// toggle injected save failure:  POST /admin/failsaves?on=true|false
+app.post('/admin/failsaves', (req, res) => {
+  failSaves = req.query.on === 'true';
+  res.json({ failSaves });
 });
 
 app.get('/metrics', async (req, res) => {

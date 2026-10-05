@@ -1,0 +1,25 @@
+syntax = "proto3";
+
+package generations;
+
+// The gRPC service. One RPC: SaveGeneration.
+// Mirrors the HTTP POST /api/generations operation and shares the same db.js.
+service GenerationService {
+  rpc SaveGeneration (SaveRequest) returns (SaveReply);
+}
+
+// What the client sends.
+message SaveRequest {
+  string id = 1;
+  string type = 2;      // "quote" or "art"
+  string content = 3;
+}
+
+// What the server returns.
+message SaveReply {
+  bool created = 1;     // true = newly saved, false = already existed (idempotent)
+  string id = 2;
+  string type = 3;
+  string content = 4;
+  string created_at = 5;
+}

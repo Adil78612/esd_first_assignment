@@ -1,0 +1,125 @@
+openapi: 3.0.3
+info:
+  title: Generator App API
+  version: "1.0.0"
+  description: >
+    HTTP API for saving and retrieving generations (quotes / art).
+    POST /api/generations is idempotent and rate limited.
+
+servers:
+  - url: http://localhost:3000
+
+paths:
+  /api/generations:
+    post:
+      summary: Save a generation (idempotent)
+      description: >
+        Saves a generation. Saving the same id twice does not create a
+        duplicate: 201 on first save, 200 if it already existed.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenerationInput'
+            examples:
+              quote:
+                value: { id: "abc", type: "quote", content: "hello world" }
+      responses:
+        '201':
+          description: Created (first save)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SaveResult' }
+        '200':
+          description: OK (already existed — idempotent repeat)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SaveResult' }
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: Too Many Requests (rate limited)
+          headers:
+            Retry-After:
+              description: Seconds to wait before retrying
+              schema: { type: integer }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '503':
+          description: Service Unavailable (injected failure for testing)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+    get:
+      summary: List all saved generations
+      responses:
+        '200':
+          description: A list of saved generations
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  generations:
+                    type: array
+                    items: { $ref: '#/components/schemas/Generation' }
+
+  /api/generations/{id}:
+    get:
+      summary: Fetch one saved generation by id
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  generation: { $ref: '#/components/schemas/Generation' }
+        '404':
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+components:
+  schemas:
+    GenerationInput:
+      type: object
+      required: [id, type, content]
+      properties:
+        id: { type: string, example: "abc" }
+        type: { type: string, enum: [quote, art], example: "quote" }
+        content: { type: string, example: "hello world" }
+    Generation:
+      type: object
+      properties:
+        id: { type: string }
+        type: { type: string, enum: [quote, art] }
+        content: { type: string }
+        created_at: { type: string, format: date-time }
+    SaveResult:
+      type: object
+      properties:
+        created: { type: boolean }
+        generation: { $ref: '#/components/schemas/Generation' }
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            code: { type: string, example: "VALIDATION_ERROR" }
+            messages:
+              type: array
+              items: { type: string }
