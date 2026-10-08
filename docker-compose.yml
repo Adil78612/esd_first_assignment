@@ -4,6 +4,10 @@ services:
     container_name: generator-app
     ports:
       - "3000:3000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - DB_PATH=/app/data/generations.db
     restart: unless-stopped
 
   prometheus:

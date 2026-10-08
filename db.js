@@ -12,7 +12,8 @@ const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'data', 'generations
 fs.mkdirSync(path.dirname(DB_PATH), { recursive: true });
 
 const db = new Database(DB_PATH);
-db.pragma('journal_mode = WAL'); // safer when more than one process uses the file
+console.log('DB opened at:', require('path').resolve(DB_PATH));
+db.pragma('journal_mode = DELETE');
 
 // Create the table once, if it doesn't already exist.
 db.exec(`
