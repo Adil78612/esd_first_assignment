@@ -70,8 +70,13 @@ def save(gen_id, body):
     for attempt in range(1, MAX_RETRIES + 1):
         try:
             r = requests.post(SAVE_URL, json=body, timeout=TIMEOUT)
+            if r.status_code == 429:
+                raise RuntimeError("rate limited (429)")
             if r.status_code >= 500:
                 raise RuntimeError(f"server {r.status_code}")
+            if r.status_code >= 400:
+                print(f"save {gen_id}: CLIENT ERROR {r.status_code} (not retried)")
+                return
             print(f"save {gen_id}: SUCCESS {r.status_code} (attempt {attempt})")
             breaker.record_success()
             return

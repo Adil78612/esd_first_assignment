@@ -96,10 +96,10 @@ const randomArt = () => {
 // ---------- request timing + logging middleware ----------
 app.use((req, res, next) => {
   req.requestId = crypto.randomUUID();
-  const stop = httpDuration.startTimer({ route: req.path });
+  const stop = httpDuration.startTimer({ route: req.route?.path || req.path });
   res.on('finish', () => {
     stop();
-    httpRequestsTotal.inc({ method: req.method, route: req.path, status: res.statusCode });
+    httpRequestsTotal.inc({ method: req.method, route: req.route?.path || req.path, status: res.statusCode });
     log(res.statusCode >= 500 ? 'error' : 'info', 'request handled', {
       request_id: req.requestId, method: req.method, route: req.path, status: res.statusCode,
     });
