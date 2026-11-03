@@ -9,7 +9,7 @@ import grpc
 import generations_pb2 as pb
 import generations_pb2_grpc as pb_grpc
 
-TARGET = "localhost:50051"
+TARGET = "localhost:8081"   # Envoy's gRPC listener (A3)
 DEADLINE_SECONDS = 2.0     # like a timeout: give up if the server is too slow
 
 

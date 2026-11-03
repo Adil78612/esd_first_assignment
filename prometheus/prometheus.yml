@@ -7,14 +7,29 @@ scrape_configs:
     static_configs:
       - targets: ['localhost:9090']
 
-  - job_name: 'generator-app'
-    static_configs:
-      - targets: ['app:3000']        # 'app' = the compose service name
-
   - job_name: 'node-exporter'
     static_configs:
       - targets: ['node-exporter:9100']
-      
-  - job_name: 'grpc-generator'
+
+  - job_name: 'generator-app'           # HTTP metrics, scraped per replica
     static_configs:
-      - targets: ['host.docker.internal:9091']
+      - targets: ['esd_first_assignment-app-1:3000']
+        labels: { replica_name: 'A' }
+      - targets: ['esd_first_assignment-app-2:3000']
+        labels: { replica_name: 'B' }
+      - targets: ['esd_first_assignment-app-3:3000']
+        labels: { replica_name: 'C' }
+
+  - job_name: 'grpc-generator'          # gRPC metrics, scraped per replica
+    static_configs:
+      - targets: ['esd_first_assignment-app-1:9091']
+        labels: { replica_name: 'A' }
+      - targets: ['esd_first_assignment-app-2:9091']
+        labels: { replica_name: 'B' }
+      - targets: ['esd_first_assignment-app-3:9091']
+        labels: { replica_name: 'C' }
+
+  - job_name: 'envoy'                   # Envoy's own metrics
+    metrics_path: /stats/prometheus
+    static_configs:
+      - targets: ['envoy:9901']

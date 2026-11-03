@@ -6,6 +6,6 @@ RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt
 WORKDIR /app
 COPY package*.json ./
 RUN npm install --omit=dev
-COPY app.js db.js openapi.yaml ./
-EXPOSE 3000
-CMD ["node", "app.js"]
+COPY app.js db.js grpc_server.js start.js generations.proto openapi.yaml ./
+EXPOSE 3000 50051 9091
+CMD ["node", "start.js"]

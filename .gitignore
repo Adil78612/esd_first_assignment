@@ -23,3 +23,7 @@ Thumbs.db
 
 # Editor
 .vscode/
+
+node_modules/
+data/
+*.db

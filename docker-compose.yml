@@ -1,13 +1,23 @@
 services:
   app:
     build: .
-    container_name: generator-app
-    ports:
-      - "3000:3000"
     volumes:
-      - ./data:/app/data
+      - app_data:/app/data
     environment:
       - DB_PATH=/app/data/generations.db
+    restart: unless-stopped
+
+  envoy:
+    image: envoyproxy/envoy:v1.31.2
+    container_name: envoy
+    volumes:
+      - ./envoy/envoy.yaml:/etc/envoy/envoy.yaml:ro
+    ports:
+      - "8080:8080"   # HTTP in
+      - "8081:8081"   # gRPC in
+      - "9901:9901"   # Envoy admin + metrics
+    depends_on:
+      - app
     restart: unless-stopped
 
   prometheus:
@@ -82,3 +92,4 @@ volumes:
   prometheus_data:
   grafana_data:
   elasticsearch_data:
+  app_data:

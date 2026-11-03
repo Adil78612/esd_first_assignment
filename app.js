@@ -10,11 +10,13 @@ const app = express();
 app.use(express.json());
 const PORT = process.env.PORT || 3000;
 const SERVICE = 'generator-app';
+const REPLICA = require('os').hostname();
 
 // ---------- Structured JSON logging (one line per event -> stdout) ----------
 function log(severity, message, extra = {}) {
   process.stdout.write(JSON.stringify({
     '@timestamp': new Date().toISOString(),
+    replica: REPLICA,
     app_name: SERVICE,
     severity,
     message,
@@ -24,6 +26,7 @@ function log(severity, message, extra = {}) {
 
 // ---------- Metrics registry ----------
 const register = new client.Registry();
+register.setDefaultLabels({ replica: require('os').hostname() });
 client.collectDefaultMetrics({ register }); // CPU/mem/eventloop of THIS process
 
 // COUNTER (business): total generations, split by type
@@ -51,7 +54,7 @@ const inProgress = new client.Gauge({
 // HISTOGRAM (app): request latency buckets
 const httpDuration = new client.Histogram({
   name: 'http_request_duration_seconds', help: 'HTTP request duration in seconds',
-  labelNames: ['route'], buckets: [0.05, 0.1, 0.25, 0.5, 1, 2, 5],
+  labelNames: ['route'], buckets: [0.001, 0.0025, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5],
   registers: [register],
 });
 // SUMMARY (app): generation time with p50/p90/p95/p99
@@ -93,18 +96,41 @@ const randomArt = () => {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><rect width="200" height="200" fill="${c1}"/><circle cx="100" cy="100" r="${40 + Math.random() * 50}" fill="${c2}"/></svg>`;
 };
 
+// A3: HTTP requests currently being handled (for "active requests" panel)
+const httpInFlight = new client.Gauge({
+  name: 'http_requests_in_flight', help: 'HTTP requests currently being handled',
+  registers: [register],
+});
+
 // ---------- request timing + logging middleware ----------
 app.use((req, res, next) => {
-  req.requestId = crypto.randomUUID();
-  const stop = httpDuration.startTimer({ route: req.route?.path || req.path });
+  req.requestId = req.get('trace-id') || crypto.randomUUID();
+  httpInFlight.inc();                                // +1: request arrived
+  res.on('close', () => httpInFlight.dec());         // -1: done or client gave up
+  const stop = httpDuration.startTimer();            // label added at the end
   res.on('finish', () => {
-    stop();
-    httpRequestsTotal.inc({ method: req.method, route: req.route?.path || req.path, status: res.statusCode });
+    const route = req.route?.path || 'unmatched';    // bounded: never the raw URL
+    stop({ route });
+    httpRequestsTotal.inc({ method: req.method, route, status: res.statusCode });
     log(res.statusCode >= 500 ? 'error' : 'info', 'request handled', {
       request_id: req.requestId, method: req.method, route: req.path, status: res.statusCode,
     });
   });
-  next();
+  // A3 Part D: injected delay (0 unless set via /admin/delay on THIS replica)
+  const delay = globalThis.injectedDelayMs || 0;
+  const skip = ['/metrics', '/health', '/admin/delay'].includes(req.path);
+  if (delay > 0 && !skip) setTimeout(next, delay);
+  else next();
+});
+
+// A3: health check for Envoy (never delayed)
+app.get('/health', (req, res) => res.json({ status: 'ok', replica: REPLICA }));
+
+// A3 Part D: set this replica's injected delay, e.g. POST /admin/delay?ms=200
+app.post('/admin/delay', (req, res) => {
+  globalThis.injectedDelayMs = Math.max(0, Number(req.query.ms) || 0);
+  log('warn', 'injected delay set', { delay_ms: globalThis.injectedDelayMs });
+  res.json({ replica: REPLICA, delay_ms: globalThis.injectedDelayMs });
 });
 
 // ---------- core generation ----------
@@ -245,7 +271,6 @@ app.post('/admin/fault', (req, res) => {
 app.post('/admin/cardinality', (req, res) => {
   if (cardCount >= 100) return res.json({ stopped: true, uniqueSeries: cardCount });
   cardCount++;
-  demoLabeled.inc({ request_id: crypto.randomUUID() });
   res.json({ uniqueSeries: cardCount });
 });
 app.post('/admin/cardinality-nolabel', (req, res) => {
