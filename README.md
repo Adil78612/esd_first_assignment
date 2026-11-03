@@ -1,4 +1,8 @@
-# ESD Assignment 1 — Observability
+﻿**Assignment 3:** setup, experiment and recovery commands are in [readme_assignment3.md](readme_assignment3.md).
+
+**Assignment 3:** setup, experiment and recovery commands are in [readme_assignment3.md](readme_assignment3.md).
+
+# ESD Assignment 1 â€” Observability
 
 A minimal Node/Express app (a quote & art generator) instrumented with a full
 observability stack: **Prometheus + Grafana** for metrics and
@@ -38,7 +42,7 @@ docker compose up -d --build
 ```
 
 First run pulls the images and builds the app (a few minutes). Elasticsearch
-and Kibana take 1–2 minutes to become ready after the containers start.
+and Kibana take 1â€“2 minutes to become ready after the containers start.
 
 Verify everything is up:
 
@@ -47,9 +51,9 @@ docker ps                                   # all 7 containers "Up"
 ```
 
 - App: open http://localhost:3000 and click the buttons.
-- Metrics: http://localhost:9090/targets — all targets should be **UP**.
+- Metrics: http://localhost:9090/targets â€” all targets should be **UP**.
 - Dashboards: http://localhost:3001 (admin/admin).
-- Logs: http://localhost:5601 → Discover.
+- Logs: http://localhost:5601 â†’ Discover.
 
 ## Use / generate traffic
 
@@ -78,7 +82,7 @@ Watch the p95 latency panel in Grafana rise, then recover.
 ```powershell
 1..100 | ForEach-Object { Invoke-RestMethod -Method Post "http://localhost:3000/admin/cardinality" | Out-Null }
 ```
-Then in Prometheus compare `count(demo_requests_total)` (climbs to 100 — one
+Then in Prometheus compare `count(demo_requests_total)` (climbs to 100 â€” one
 series per `request_id` label) against `count(demo_requests_nolabel_total)`
 (stays 1). This shows why high-variety values belong in logs, not labels.
 
@@ -106,10 +110,12 @@ docker compose down -v
 ## Notes
 
 - Art generation latency is **simulated** (a random delay) so the app
-  produces controllable, variable response times for the metrics — it does
+  produces controllable, variable response times for the metrics â€” it does
   not call a real image model.
 - Grafana's Prometheus data source is provisioned automatically
   (`grafana/provisioning/datasources/datasource.yml`).
 - Filebeat parses the app's JSON logs and nests fields under `app.*`
   (`target: "app"`) to avoid clashing with Elasticsearch's ECS field
   mappings.
+
+
